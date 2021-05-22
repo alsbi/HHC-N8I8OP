@@ -89,9 +89,9 @@ class Hhcn8I8opSwitch(SwitchEntity):
     def turn_off(self, **kwargs):
         self._set_state(False)
 
-    def _parse_state(self, responce):
+    def _parse_state(self, response):
         return [bool(int(state)) for index, state in
-                enumerate(reversed(responce.split('relay')[1]))]
+                enumerate(reversed(response.split('relay')[1]))]
 
     def _get_state(self):
         return self._parse_state(self._execute('read'))[self._index - 1]
