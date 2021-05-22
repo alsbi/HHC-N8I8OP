@@ -4,7 +4,7 @@
 
 HHC_N8I8OP:
 
-switch:
+```switch:
   - platform: HHC_N8I8OP
     name: switchTest1
     ip: 172.16.1.16
@@ -44,4 +44,4 @@ switch:
     name: switchTest8
     ip: 172.16.1.16
     port: 5000
-    index: 8
+    index: 8```
