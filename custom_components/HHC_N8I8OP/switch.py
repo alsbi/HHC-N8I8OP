@@ -1,6 +1,5 @@
 import logging
 import socket
-from collections import defaultdict
 
 import homeassistant.helpers.config_validation as cv
 import homeassistant.util.dt as dt_util
@@ -16,16 +15,17 @@ CONF_IP = "ip"
 CONF_PORT = "port"
 CONF_INDEX = "index"
 
+WAIT_TIMEOUT = 5
+DEFAULT_PORT = 5000
+
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_NAME): cv.string,
     vol.Required(CONF_IP): cv.string,
-    vol.Optional(CONF_PORT, default=500): cv.string,
+    vol.Optional(CONF_PORT, default=DEFAULT_PORT): cv.string,
     vol.Required(CONF_INDEX): cv.string,
 })
 
 _LOGGER.warning('START MY SWITCH')
-
-_registered_switch = defaultdict(list)
 
 
 async def async_setup_platform(_hass, config, async_add_entities, _discovery_info=None):
@@ -47,15 +47,11 @@ class Hhcn8I8opSwitch(SwitchEntity):
         self._index = int(config.get(CONF_INDEX))
 
     def _execute(self, command):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.connect((self._ip, self._port))
-        c = str(command).encode()
-        sock.settimeout(5)
-        sock.send(c)
-        data = sock.recv(8192)
-        data = data.decode()
-        sock.close()
-        return data
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.settimeout(WAIT_TIMEOUT)
+            sock.connect((self._ip, self._port))
+            sock.send(str(command).encode())
+            return sock.recv(8192).decode()
 
     @property
     def device_state_attributes(self):
@@ -90,8 +86,7 @@ class Hhcn8I8opSwitch(SwitchEntity):
         self._set_state(False)
 
     def _parse_state(self, response):
-        return [bool(int(state)) for index, state in
-                enumerate(reversed(response.split('relay')[1]))]
+        return [bool(int(state)) for state in reversed(response.split('relay')[1])]
 
     def _get_state(self):
         return self._parse_state(self._execute('read'))[self._index - 1]
