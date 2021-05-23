@@ -25,8 +25,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_INDEX): cv.string,
 })
 
-_LOGGER.warning('START MY SWITCH')
-
 
 async def async_setup_platform(_hass, config, async_add_entities, _discovery_info=None):
     switches = [Hhcn8I8opSwitch(config)]
@@ -45,6 +43,8 @@ class Hhcn8I8opSwitch(SwitchEntity):
         self._ip = config.get(CONF_IP)
         self._port = int(config.get(CONF_PORT))
         self._index = int(config.get(CONF_INDEX))
+
+        _LOGGER.debug(f'Start switch {self._unique_id}')
 
     def _execute(self, command):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
