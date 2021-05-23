@@ -1,4 +1,5 @@
 {
-    "name": "HHC-N8I8OP relay",
-    "render_readme": true
+  "name": "HHC-N8I8OP relay",
+  "render_readme": true,
+  "version": "1.0"
 }
