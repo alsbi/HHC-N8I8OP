@@ -96,7 +96,11 @@ class Hhcn8I8opSwitch(SwitchEntity):
     def _set_state(self, state):
         state = f'{"on" if state else "off"}'
 
-        self._execute(f'{state}{self._index}')
+        try:
+            self._execute(f'{state}{self._index}')
+        except socket.timeout:
+            _LOGGER.debug(f'Set "{self.name}" state {state} fail, socket timeout')
+            return
 
         track_point_in_time(self.hass, self.async_update_ha_state, dt_util.utcnow())
         _LOGGER.debug(f'Set "{self.name}" state {state}')
