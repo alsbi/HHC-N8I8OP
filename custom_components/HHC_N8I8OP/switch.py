@@ -85,11 +85,13 @@ class Hhcn8I8opSwitch(SwitchEntity):
     def turn_off(self, **kwargs):
         self._set_state(False)
 
-    def _parse_state(self, response):
-        return [bool(int(state)) for state in reversed(response.split('relay')[1])]
-
     def _get_state(self):
-        return self._parse_state(self._execute('read'))[self._index - 1]
+        try:
+            response = self._execute('read')
+            state = list(reversed(response.split('relay')[1]))[self._index - 1]
+            return bool(int(state))
+        except socket.timeout:
+            return
 
     def _set_state(self, state):
         state = f'{"on" if state else "off"}'
