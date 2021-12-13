@@ -2,11 +2,10 @@ import logging
 import socket
 
 import homeassistant.helpers.config_validation as cv
-import homeassistant.util.dt as dt_util
 import voluptuous as vol
 from homeassistant.components.switch import SwitchEntity
+from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNKNOWN
 from homeassistant.helpers.config_validation import (PLATFORM_SCHEMA)
-from homeassistant.helpers.event import track_point_in_time
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -14,21 +13,23 @@ CONF_NAME = "name"
 CONF_IP = "ip"
 CONF_PORT = "port"
 CONF_INDEX = "index"
+ICON = 'icon'
 
-WAIT_TIMEOUT = 10
+WAIT_TIMEOUT = 2
 DEFAULT_PORT = 5000
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_NAME): cv.string,
     vol.Required(CONF_IP): cv.string,
     vol.Optional(CONF_PORT, default=DEFAULT_PORT): cv.string,
+    vol.Optional(ICON, default="mdi:lightbulb"): cv.string,
     vol.Required(CONF_INDEX): cv.string,
 })
 
 
 async def async_setup_platform(_hass, config, async_add_entities, _discovery_info=None):
-    switches = [Hhcn8I8opSwitch(config)]
-    async_add_entities(switches, True)
+    sensors = [Hhcn8I8opSwitch(config)]
+    async_add_entities(sensors, update_before_add=True)
 
 
 class Hhcn8I8opSwitch(SwitchEntity):
@@ -43,32 +44,30 @@ class Hhcn8I8opSwitch(SwitchEntity):
         self._ip = config.get(CONF_IP)
         self._port = int(config.get(CONF_PORT))
         self._index = int(config.get(CONF_INDEX))
+        self._icon = config.get(ICON)
+
+        self._get_state()
 
         _LOGGER.debug(f'Start switch {self._unique_id}')
 
     @property
     def icon(self):
         """Icon of the entity."""
-        return "mdi:Lightbulb"
-
-    def _execute(self, command):
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.settimeout(WAIT_TIMEOUT)
-            sock.connect((self._ip, self._port))
-            sock.send(str(command).encode())
-            return sock.recv(8192).decode()
+        return self._icon
 
     @property
     def available(self):
-        """Return availability."""
-        return True if self._get_state() is not None else False
+        """If light is available."""
+        return self._state != STATE_UNKNOWN
 
     @property
-    def device_state_attributes(self):
+    def extra_state_attributes(self):
         """Return the device state attributes."""
         attrs = {
             'friendly_name': self._name,
             'unique_id': self._unique_id,
+            'index': self._index,
+            "manufacturer": "HHC",
         }
         return attrs
 
@@ -84,35 +83,47 @@ class Hhcn8I8opSwitch(SwitchEntity):
         """Return a unique ID."""
         return self._unique_id
 
+    def _execute_socket_command(self, command: str) -> str:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.settimeout(WAIT_TIMEOUT)
+            sock.connect((self._ip, self._port))
+            sock.send(str(command).encode())
+            return sock.recv(8192).decode()
+
     def _get_state(self):
         try:
-            response = self._execute('read')
+            response = self._execute_socket_command('read')
             state = list(reversed(response.split('relay')[1]))[self._index - 1]
-            return bool(int(state))
+            self._state = STATE_ON if bool(int(state)) else STATE_OFF
         except socket.timeout:
-            return
+            self._state = STATE_UNKNOWN
 
-    def _set_state(self, state):
-        state = f'{"on" if state else "off"}'
+    async def async_update(self):
+        """Retrieve latest state."""
+        self._get_state()
 
+    def _set_state(self, state: str):
         try:
-            self._execute(f'{state}{self._index}')
+
+            self._execute_socket_command(f'{state}{self._index}')
+            self._state = state
+
         except socket.timeout:
             _LOGGER.debug(f'Set "{self.name}" state {state} fail, socket timeout')
-            return
+            self._state = STATE_UNKNOWN
 
-        track_point_in_time(self.hass, self.async_update_ha_state, dt_util.utcnow())
-        _LOGGER.debug(f'Set "{self.name}" state {state}')
-
-        self.async_schedule_update_ha_state()
+    @property
+    def state(self):
+        """Return the state of the entity."""
+        return self._state
 
     @property
     def is_on(self):
-        """Return true if switch is on."""
-        return self._get_state()
+        """Return true if device is on."""
+        return self._state == STATE_ON
 
     def turn_on(self, **kwargs):
-        self._set_state(True)
+        self._set_state(STATE_ON)
 
     def turn_off(self, **kwargs):
-        self._set_state(False)
+        self._set_state(STATE_OFF)
