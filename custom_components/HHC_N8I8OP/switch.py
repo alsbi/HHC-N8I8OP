@@ -15,7 +15,7 @@ CONF_IP = "ip"
 CONF_PORT = "port"
 CONF_INDEX = "index"
 
-WAIT_TIMEOUT = 5
+WAIT_TIMEOUT = 10
 DEFAULT_PORT = 5000
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
@@ -46,12 +46,23 @@ class Hhcn8I8opSwitch(SwitchEntity):
 
         _LOGGER.debug(f'Start switch {self._unique_id}')
 
+    @property
+    def icon(self):
+        """Icon of the entity."""
+        return "mdi:Lightbulb"
+
     def _execute(self, command):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.settimeout(WAIT_TIMEOUT)
             sock.connect((self._ip, self._port))
             sock.send(str(command).encode())
             return sock.recv(8192).decode()
+
+    @property
+    def available(self):
+        """Return availability."""
+        _LOGGER.debug("Device %s - availability: %s", self._name, self._available)
+        return True if self._get_state() is not None else False
 
     @property
     def device_state_attributes(self):
@@ -74,17 +85,6 @@ class Hhcn8I8opSwitch(SwitchEntity):
         """Return a unique ID."""
         return self._unique_id
 
-    @property
-    def is_on(self):
-        """Return true if switch is on."""
-        return self._get_state()
-
-    def turn_on(self, **kwargs):
-        self._set_state(True)
-
-    def turn_off(self, **kwargs):
-        self._set_state(False)
-
     def _get_state(self):
         try:
             response = self._execute('read')
@@ -106,3 +106,14 @@ class Hhcn8I8opSwitch(SwitchEntity):
         _LOGGER.debug(f'Set "{self.name}" state {state}')
 
         self.async_schedule_update_ha_state()
+
+    @property
+    def is_on(self):
+        """Return true if switch is on."""
+        return self._get_state()
+
+    def turn_on(self, **kwargs):
+        self._set_state(True)
+
+    def turn_off(self, **kwargs):
+        self._set_state(False)
