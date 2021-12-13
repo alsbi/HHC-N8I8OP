@@ -61,7 +61,6 @@ class Hhcn8I8opSwitch(SwitchEntity):
     @property
     def available(self):
         """Return availability."""
-        _LOGGER.debug("Device %s - availability: %s", self._name, self._available)
         return True if self._get_state() is not None else False
 
     @property
