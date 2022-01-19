@@ -3,52 +3,94 @@ import socket
 
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
+from cachetools.func import ttl_cache
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNKNOWN
 from homeassistant.helpers.config_validation import (PLATFORM_SCHEMA)
 
+from .const import *
+
 _LOGGER = logging.getLogger(__name__)
 
-CONF_NAME = "name"
-CONF_IP = "ip"
-CONF_PORT = "port"
-CONF_INDEX = "index"
-ICON = 'icon'
-
-WAIT_TIMEOUT = 2
-DEFAULT_PORT = 5000
-
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
-    vol.Required(CONF_NAME): cv.string,
     vol.Required(CONF_IP): cv.string,
+    vol.Optional(CONF_NAME): cv.string,
     vol.Optional(CONF_PORT, default=DEFAULT_PORT): cv.string,
     vol.Optional(ICON, default="mdi:lightbulb"): cv.string,
-    vol.Required(CONF_INDEX): cv.string,
+    vol.Required(CONF_LIGHTS): cv.positive_int,
 })
 
 
-async def async_setup_platform(_hass, config, async_add_entities, _discovery_info=None):
-    sensors = [Hhcn8I8opSwitch(config)]
-    async_add_entities(sensors, update_before_add=True)
+async def async_setup_platform(
+        hass,
+        config,
+        async_add_entities,
+        discovery_info=None,
+) -> None:
+    devices = []
+
+    switch = Hhcn8I8opSwitch(config.get(CONF_IP), config.get(CONF_PORT), name=config.get(CONF_NAME))
+
+    for index in range(config[CONF_LIGHTS]):
+        devices.append(
+            Hhcn8I8opEntity(switch, index, icon=config.get(ICON))
+        )
+
+    async_add_entities(devices, update_before_add=True)
 
 
-class Hhcn8I8opSwitch(SwitchEntity):
-    def __init__(self, config):
-        self._name = config.get(CONF_NAME)
+class Hhcn8I8opSwitch:
+    def __init__(self, ip, port, name=None):
+        self.name = name
+        self.ip = ip
+        self.port = int(port)
+        self.collection = {}
+
+    def execute_socket_command(self, command: str) -> str:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.settimeout(WAIT_TIMEOUT)
+            sock.connect((self.ip, self.port))
+            sock.send(str(command).encode())
+            return sock.recv(8192).decode()
+
+    @ttl_cache(1, 1)
+    def update_state(self):
+
+        try:
+            response = self.execute_socket_command('read')
+            state = [STATE_ON if bool(int(s)) else STATE_OFF for s in list(reversed(response.split('relay')[1]))]
+        except socket.timeout:
+            state = [STATE_UNKNOWN] * len(self.collection)
+
+        for i, switch in self.collection.items():
+            switch._state = state[i]
+
+
+class Hhcn8I8opEntity(SwitchEntity):
+    def __init__(self, switch: Hhcn8I8opSwitch, index: int, icon=None):
+        self.switch = switch
+        self._index = index
+
+        self.switch.collection[self._index] = self
+
+        if self.switch.name:
+            self._name = '{}_{}'.format(self.switch.name, self.index)
+        else:
+            self._name = '{}'.format(self.index)
 
         self.no_domain_ = self._name.startswith("!")
         if self.no_domain_:
             self._name = self.name[1:]
         self._unique_id = self._name.lower().replace(' ', '_')
 
-        self._ip = config.get(CONF_IP)
-        self._port = int(config.get(CONF_PORT))
-        self._index = int(config.get(CONF_INDEX))
-        self._icon = config.get(ICON)
-
-        self._get_state()
+        self._state = STATE_UNKNOWN
+        self._icon = icon
 
         _LOGGER.debug(f'Start switch {self._unique_id}')
+
+    @property
+    def index(self):
+        return self._index + 1
 
     @property
     def icon(self):
@@ -66,7 +108,7 @@ class Hhcn8I8opSwitch(SwitchEntity):
         attrs = {
             'friendly_name': self._name,
             'unique_id': self._unique_id,
-            'index': self._index,
+            'index': self.index,
             "manufacturer": "HHC",
         }
         return attrs
@@ -83,34 +125,20 @@ class Hhcn8I8opSwitch(SwitchEntity):
         """Return a unique ID."""
         return self._unique_id
 
-    def _execute_socket_command(self, command: str) -> str:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.settimeout(WAIT_TIMEOUT)
-            sock.connect((self._ip, self._port))
-            sock.send(str(command).encode())
-            return sock.recv(8192).decode()
-
-    def _get_state(self):
-        try:
-            response = self._execute_socket_command('read')
-            state = list(reversed(response.split('relay')[1]))[self._index - 1]
-            self._state = STATE_ON if bool(int(state)) else STATE_OFF
-        except socket.timeout:
-            self._state = STATE_UNKNOWN
-
-    async def async_update(self):
-        """Retrieve latest state."""
-        self._get_state()
+    def update(self):
+        self.switch.update_state()
 
     def _set_state(self, state: str):
         try:
 
-            self._execute_socket_command(f'{state}{self._index}')
+            self.switch.execute_socket_command(f'{state}{self.index}')
             self._state = state
 
         except socket.timeout:
             _LOGGER.debug(f'Set "{self.name}" state {state} fail, socket timeout')
             self._state = STATE_UNKNOWN
+
+        self.schedule_update_ha_state()
 
     @property
     def state(self):

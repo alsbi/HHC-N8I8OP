@@ -1,10 +1,15 @@
+from __future__ import annotations
+
 import logging
 
-__version__ = '0.1'
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.typing import ConfigType
+
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def setup(_hass, _config):
-    _LOGGER.debug('setup')
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    _LOGGER.debug(f'{DOMAIN} setup')
     return True
