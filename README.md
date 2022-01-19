@@ -10,10 +10,5 @@ switch:
     name: switch1
     ip: IP
     port: 5000
-    index: 1
-  - platform: HHC_N8I8OP
-    name: switch2
-    ip: IP
-    port: 5000
-    index: 2
+    lights: 8
 ```
