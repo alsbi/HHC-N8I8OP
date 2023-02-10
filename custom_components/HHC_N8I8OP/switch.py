@@ -1,9 +1,10 @@
+import threading
+
 import logging
 import socket
 
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
-from cachetools.func import ttl_cache
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNKNOWN
 from homeassistant.helpers.config_validation import (PLATFORM_SCHEMA)
@@ -19,6 +20,8 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Optional(ICON, default="mdi:lightbulb"): cv.string,
     vol.Required(CONF_LIGHTS): cv.positive_int,
 })
+
+request_lock = threading.Lock()
 
 
 async def async_setup_platform(
@@ -47,19 +50,21 @@ class Hhcn8I8opSwitch:
         self.collection = {}
 
     def execute_socket_command(self, command: str) -> str:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.settimeout(WAIT_TIMEOUT)
-            sock.connect((self.ip, self.port))
-            sock.send(str(command).encode())
-            return sock.recv(8192).decode()
+        with request_lock:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.settimeout(WAIT_TIMEOUT)
+                sock.connect((self.ip, self.port))
+                sock.send(str(command).encode())
+                data = sock.recv(8192).decode()
+            return data
 
-    @ttl_cache(1, 1)
     def update_state(self):
-
+        _LOGGER.debug(f'Start update switch state')
         try:
             response = self.execute_socket_command('read')
             state = [STATE_ON if bool(int(s)) else STATE_OFF for s in list(reversed(response.split('relay')[1]))]
         except socket.timeout:
+            _LOGGER.error(f'Update state error: socket timeout')
             state = [STATE_UNKNOWN] * len(self.collection)
 
         for i, switch in self.collection.items():
@@ -135,7 +140,7 @@ class Hhcn8I8opEntity(SwitchEntity):
             self._state = state
 
         except socket.timeout:
-            _LOGGER.debug(f'Set "{self.name}" state {state} fail, socket timeout')
+            _LOGGER.error(f'Set "{self.name}" state {state} fail, socket timeout')
             self._state = STATE_UNKNOWN
 
         self.schedule_update_ha_state()
