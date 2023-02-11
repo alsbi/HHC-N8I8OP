@@ -1,7 +1,6 @@
-import threading
-
 import logging
 import socket
+import threading
 
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
@@ -138,6 +137,7 @@ class Hhcn8I8opEntity(SwitchEntity):
 
             self.switch.execute_socket_command(f'{state}{self.index}')
             self._state = state
+            _LOGGER.debug(f'Set state {state} switch {self._unique_id}')
 
         except socket.timeout:
             _LOGGER.error(f'Set "{self.name}" state {state} fail, socket timeout')
